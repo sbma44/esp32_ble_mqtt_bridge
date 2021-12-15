@@ -8,6 +8,7 @@ import paho.mqtt.client as mqtt
 from collections import defaultdict
 from statistics import median
 from datetime import datetime
+import shutil
 from local_settings import *
 
 class Handler(object):
@@ -18,7 +19,8 @@ class Handler(object):
         self.s3_client = s3_client
 
     def rotate(self):
-        current_date = datetime.fromtimestamp(time.time()).isoformat().split('T')[0]
+        current_date = datetime.now().isoformat().split('T')[0]
+        moved_something = False
         for fn in os.listdir(LOG_PATH):
             if fn.split('.')[-1] != 'json':
                 continue
@@ -33,7 +35,16 @@ class Handler(object):
                 except:
                     print('upload failed!')
                 if upload_successful:
-                    os.unlink(os.path.join(LOG_PATH, fn))
+                    shutil.move(os.path.join(LOG_PATH, fn), os.path.join(LOG_PATH, 'archive', fn))
+                    moved_something = True
+
+        # rotate locally stored files
+        if moved_something:
+            files = [os.path.basename(f) for f in os.listdir(os.path.join(LOG_PATH, 'archive'))]
+            files.sort(reverse=True)
+            if len(files) > RETENTION_COUNT:
+                for fn in files[RETENTION_COUNT:]:
+                    os.unlink(os.path.join(LOG_PATH, 'archive', fn))
 
     def on_message(self, client, userdata, message):
         t = time.time()
@@ -63,5 +74,6 @@ if __name__ == '__main__':
     client = mqtt.Client('temp_logger')
     client.connect(MQTT_HOST)
     client.subscribe('xiaomi_mijia/#')
+    client.subscribe('xmas/#')
     client.on_message = h.on_message
     client.loop_forever()

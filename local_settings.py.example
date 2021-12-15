@@ -1,5 +1,6 @@
 MQTT_HOST = '192.168.1.200'
 SEGMENT_LENGTH = 300
+RETENTION_COUNT = 7
 LOG_PATH = '/home/pi/sensor_logging'
 S3_BUCKET='username'
 S3_PATH='sensors/environment/'
