@@ -75,5 +75,6 @@ if __name__ == '__main__':
     client.connect(MQTT_HOST)
     client.subscribe('xiaomi_mijia/#')
     client.subscribe('xmas/#')
+    client.subscribe('co2/#')
     client.on_message = h.on_message
     client.loop_forever()
