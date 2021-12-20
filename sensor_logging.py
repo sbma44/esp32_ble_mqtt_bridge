@@ -76,5 +76,6 @@ if __name__ == '__main__':
     client.subscribe('xiaomi_mijia/#')
     client.subscribe('xmas/#')
     client.subscribe('co2/#')
+    client.subscribe('aq/#')
     client.on_message = h.on_message
     client.loop_forever()
