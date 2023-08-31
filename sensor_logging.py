@@ -4,6 +4,7 @@ import math
 import os
 import gzip
 import boto3
+import redis
 import paho.mqtt.client as mqtt
 from collections import defaultdict
 from statistics import median
@@ -13,10 +14,11 @@ from local_settings import *
 
 class Handler(object):
 
-    def __init__(self, s3_client):
+    def __init__(self, s3_client, redis_client):
         self.data = defaultdict(list)
         self.last_segment = 0
         self.s3_client = s3_client
+        self.redis_client = redis_client
 
     def rotate(self):
         current_date = datetime.now().isoformat().split('T')[0]
@@ -65,11 +67,14 @@ class Handler(object):
             # check to see if logs should be uploaded/rotated
             self.rotate()
 
-        self.data['_'.join(message.topic.split('/')[1:])].append(float(message.payload.decode("utf-8")))
+        msg_key = '_'.join(message.topic.split('/')[1:])
+        self.redis_client.set(message.topic, message.payload.decode("utf-8"))
+        self.data[msg_key].append(float(message.payload.decode("utf-8")))
 
 if __name__ == '__main__':
     s3_client = boto3.client('s3', region_name=AWS_DEFAULT_REGION, aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
-    h = Handler(s3_client)
+    redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+    h = Handler(s3_client, redis_client)
 
     client = mqtt.Client('temp_logger')
     client.connect(MQTT_HOST)
