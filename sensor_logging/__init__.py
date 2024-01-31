@@ -19,7 +19,7 @@ import boto3
 import redis
 import paho.mqtt.client as mqtt
 
-from local_settings import *
+from sensor_logging.local_settings import *
 
 lock = threading.Lock()
 s3_lock = threading.Lock()

@@ -80,8 +80,5 @@ class TestDatabaseHandler(unittest.TestCase):
         # Check if the method skips upload due to the same interval
         self.mock_s3_client.put_object.assert_not_called()
 
-
-    # Add more tests here to cover data retrieval, CSV/JSON generation, etc.
-
 if __name__ == '__main__':
     unittest.main()
