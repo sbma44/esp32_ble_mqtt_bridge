@@ -9,6 +9,7 @@ import shutil
 import sqlite3
 import threading
 import socketserver
+import logging
 import http.server
 from urllib.parse import urlparse, parse_qs
 from collections import defaultdict
@@ -24,23 +25,38 @@ from sensor_logging.local_settings import *
 lock = threading.Lock()
 s3_lock = threading.Lock()
 
+
+log_level = os.getenv('LOG_LEVEL', 'WARNING').upper()
+numeric_level = getattr(logging, log_level, None)
+if not isinstance(numeric_level, int):
+    raise ValueError(f'Invalid log level: {log_level}')
+
+# Configure logging
+# Example format: "2021-01-01 12:00:00,000 - name - LEVEL - Message"
+logging.basicConfig(level=numeric_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
 class MQTTHandler(object):
     def __init__(self, host, db, redis_client):
         self.db = db
         self.redis_client = redis_client
 
         self.client = mqtt.Client('sensor_logging_api')
+        self.client.on_connect = self.on_connect
+        self.client.on_message = self.on_message
         self.client.connect(host)
+        self.client.loop_forever()
+
+    def on_connect(self, client, userdata, flags, rc):
         self.client.subscribe('xiaomi_mijia/#')
         self.client.subscribe('xmas/#')
         self.client.subscribe('co2/#')
         self.client.subscribe('aq/#')
-        self.client.on_message = self.on_message
-        self.client.loop_forever()
 
     def on_message(self, client, userdata, msg):
         self.db.insert(msg.topic, msg.payload)
         self.redis_client.set(msg.topic, msg.payload.decode("utf-8"))
+        self.redis_client.set('{}_last'.format(msg.topic), str(time.time()))
+        logging.debug('MQTT message: {} - {}'.format(msg.topic, msg.payload.decode('utf-8')))
 
 class DatabaseHandler(object):
 
@@ -108,6 +124,8 @@ class DatabaseHandler(object):
         current_interval = math.floor(time.time() / S3_INTERVAL)
         if current_interval > self.last_s3_upload:
             with s3_lock:
+                logging.info('writing to S3')
+
                 period_start = current_interval * S3_INTERVAL
                 period_end = period_start + S3_INTERVAL
 
@@ -194,7 +212,7 @@ class HttpServer(object):
 
     def start(self):
         with socketserver.TCPServer(("", self.port), self.handler_factory) as httpd:
-            print("Server started at localhost:" + str(self.port))
+            logging.info("Server started at localhost:" + str(self.port))
             httpd.serve_forever()
 
     class MyHttpRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -283,12 +301,12 @@ if __name__ == '__main__':
     s3_client = boto3.client('s3', region_name=AWS_DEFAULT_REGION, aws_access_key_id=AWS_ACCESS_KEY_ID, aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
     redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-    print('starting database')
+    logging.info('starting database')
     db = DatabaseHandler(SQLITE_FILENAME, s3_client)
 
-    print('starting http')
+    logging.info('starting http')
     http_thread = threading.Thread(target=run_http, args=(HTTP_PORT,))
     http_thread.start()
 
-    print('starting mqtt')
+    logging.info('starting mqtt')
     mqtt = MQTTHandler(MQTT_HOST, db, redis_client)

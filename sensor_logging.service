@@ -5,7 +5,8 @@ Description=Environmental sensor log collector
 Restart=on-failure
 RestartSec=30
 Type=simple
-ExecStart=/home/pi/sensor_logging/.venv/bin/python3 /home/pi/sensor_logging/sensor_logging.py
+ExecStart=/home/pi/sensor_logging/.venv/bin/python3 -m sensor_logging
+WorkingDirectory=/home/pi/sensor_logging
 
 [Install]
 WantedBy=multi-user.target
