@@ -3,37 +3,26 @@ from unittest.mock import patch, MagicMock
 import time, math, gzip, os, json
 
 from sensor_logging import DatabaseHandler
-
-class Accumulator(object):
-    def __init__(self):
-        self.value = 0
-
-    def get(self):
-        self.value = (self.value + 1) % 100
-        return self.value
+from test import Accumulator
 
 class TestDatabaseHandler(unittest.TestCase):
     @patch('sensor_logging.DatabaseHandler.flush_to_disk')
     def setUp(self, mock_flush_to_disk):
         self.mock_s3_client = MagicMock()
-        self.db_handler = DatabaseHandler('test.db', self.mock_s3_client)
+        self.db_handler = DatabaseHandler(self.mock_s3_client)
 
     @patch('time.time')
     def test_write_to_s3_interval(self, mock_time):
         S3_INTERVAL = 24 * 60 * 60  # 24 hours
 
-        acc = Accumulator()
-
-        # Set up the time to a specific value
         current_time = 1620000000  # example timestamp
-        mock_time.return_value = current_time
 
         # Set the last_s3_upload to a time earlier than the current interval
         self.db_handler.last_s3_upload = math.floor((current_time - (24.1 * 60 * 60)) / S3_INTERVAL) # 24h earlier
 
         # do a bunch of inserts at various times & topics
+        acc = Accumulator()
         start_time = current_time
-        accumulator = 0
         while start_time < (current_time + S3_INTERVAL):
             mock_time.return_value = start_time
             self.db_handler.insert('topic1', acc.get())
