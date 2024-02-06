@@ -15,6 +15,7 @@ from urllib.parse import urlparse, parse_qs
 from collections import defaultdict
 from statistics import median
 from datetime import datetime
+from concurrent import futures
 
 import paho.mqtt.client as mqtt
 
@@ -64,6 +65,9 @@ class DatabaseHandler(object):
 
         self.conn = DatabaseHandler.get_sqlite_connection()
 
+        self.tpe = futures.ThreadPoolExecutor(max_workers=1)
+        self.tpe_task = None
+
         if filename and os.path.exists(self.filename):
             # open existing file
             source = sqlite3.connect(self.filename)
@@ -90,15 +94,22 @@ class DatabaseHandler(object):
 
         self.last_flush = time.time()
 
+    def _mark_last_flush(self, future):
+        if future.done():
+            self.tpe_task = None
+        self.last_flush = time.time()
+
     def insert(self, topic, value):
         with lock:
             cur = self.conn.cursor()
             cur.execute('INSERT INTO data (t, topic, value) VALUES (?, ?, ?)',  (time.time(), topic, value))
             self.conn.commit()
 
+            # flush to disk in a separate thread executor
             if time.time() - self.last_flush > self.FLUSH_INTERVAL:
-                self.flush_to_disk()
-                self.last_flush = time.time()
+                if self.tpe_task is None:
+                    self.tpe_task = self.tpe.submit(self.flush_to_disk)
+                    self.tpe_task.add_done_callback(self._mark_last_flush)
 
     def flush_to_disk(self):
         if not self.filename:
@@ -108,9 +119,15 @@ class DatabaseHandler(object):
         if os.path.exists('{}.tmp'.format(self.filename)):
             os.remove('{}.tmp'.format(self.filename))
 
+        logger.info('attempting to store database to disk ({})'.format(self.filename))
         with lock:
+            dest = sqlite3.connect('{}.tmp'.format(self.filename))
+            with dest:
+                self.conn.backup(dest)
+            dest.close()
+
+            logger.info('trimming database')
             cur = self.conn.cursor()
-            cur.execute("VACUUM main INTO '{}.tmp'".format(self.filename))
             cur.execute("DELETE FROM data WHERE t < ?", (time.time() - self.RETENTION_PERIOD,))
             self.conn.commit()
 
@@ -250,8 +267,8 @@ class HttpServer(object):
 
             topics = qsparams.get('topic', ['xiaomi_mijia/M_BKROOM/temperature'])
             chunk = int(qsparams.get('chunk', [60])[0])
-            since = int(qsparams.get('since', [24 * 60 * 60])[0])
-            until = int(qsparams.get('until', [False])[0])
+            since = float(qsparams.get('since', [24 * 60 * 60])[0])
+            until = float(qsparams.get('until', [False])[0])
 
             out = {}
             for (i, topic) in enumerate(topics):
