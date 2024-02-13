@@ -54,7 +54,7 @@ class DatabaseHandler(object):
     def __init__(self, s3_client, config = {}, filename = False):
         self.filename = filename
         self.s3_client = s3_client
-        self.last_s3_upload = 0
+        self.last_s3_upload = None
 
         self.FLUSH_INTERVAL = config.get('FLUSH_INTERVAL', 600)
         self.AGGREGATION_INTERVAL = config.get('AGGREGATION_INTERVAL', 5 * 60)
@@ -105,36 +105,40 @@ class DatabaseHandler(object):
             cur.execute('INSERT INTO data (t, topic, value) VALUES (?, ?, ?)',  (time.time(), topic, value))
             self.conn.commit()
 
-            # flush to disk in a separate thread executor
-            if time.time() - self.last_flush > self.FLUSH_INTERVAL:
-                if self.tpe_task is None:
-                    self.tpe_task = self.tpe.submit(self.flush_to_disk)
-                    self.tpe_task.add_done_callback(self._mark_last_flush)
+        # flush to disk in a separate thread executor
+        if time.time() - self.last_flush > self.FLUSH_INTERVAL:
+            if self.tpe_task is None:
+                self.tpe_task = self.tpe.submit(self.flush_to_disk)
+                self.tpe_task.add_done_callback(self._mark_last_flush)
+
+        # write to s3 if enough time has passed
+        self.write_to_s3()
 
     def flush_to_disk(self):
-        if not self.filename:
-            return
-
         # save in-memory database to disk
         if os.path.exists('{}.tmp'.format(self.filename)):
             os.remove('{}.tmp'.format(self.filename))
 
         logger.info('attempting to store database to disk ({})'.format(self.filename))
-        with lock:
-            dest = sqlite3.connect('{}.tmp'.format(self.filename))
-            with dest:
-                self.conn.backup(dest)
-            dest.close()
+        if self.filename:
+            with lock:
+                dest = sqlite3.connect('{}.tmp'.format(self.filename))
+                with dest:
+                    self.conn.backup(dest)
+                dest.close()
+            shutil.move('{}.tmp'.format(self.filename), self.filename)
 
+        with lock:
             logger.info('trimming database')
             cur = self.conn.cursor()
             cur.execute("DELETE FROM data WHERE t < ?", (time.time() - self.RETENTION_PERIOD,))
             self.conn.commit()
 
-        shutil.move('{}.tmp'.format(self.filename), self.filename)
 
     def write_to_s3(self):
         current_interval = math.floor(time.time() / self.S3_INTERVAL)
+        if self.last_s3_upload is None:
+            self.last_s3_upload = current_interval
         if current_interval > self.last_s3_upload:
             with s3_lock:
                 logging.info('writing to S3')
@@ -194,7 +198,7 @@ class DatabaseHandler(object):
                     subperiod_start = subperiod_start + self.AGGREGATION_INTERVAL
 
                 # prepare to upload artifacts to S3
-                date_string = datetime.fromtimestamp(subperiod_start).isoformat()
+                date_string = datetime.fromtimestamp(period_start).isoformat()
 
                 # upload csv
                 csv_output.seek(0)
