@@ -1,3 +1,3 @@
-test:
-	python3 -m unittest test.test_database_handler
+tests:
+	python3 -m unittest discover -s test
 

@@ -15,7 +15,6 @@ from urllib.parse import urlparse, parse_qs
 from collections import defaultdict
 from statistics import median
 from datetime import datetime
-from concurrent import futures
 
 import paho.mqtt.client as mqtt
 
@@ -65,9 +64,6 @@ class DatabaseHandler(object):
 
         self.conn = DatabaseHandler.get_sqlite_connection()
 
-        self.tpe = futures.ThreadPoolExecutor(max_workers=1)
-        self.tpe_task = None
-
         if filename and os.path.exists(self.filename):
             # open existing file
             source = sqlite3.connect(self.filename)
@@ -82,7 +78,8 @@ class DatabaseHandler(object):
         # If count is 1, then table exists
         res = cur.fetchone()
         if int(res[0]) != 1:
-            with lock:
+            lock.acquire()
+            try:
                 sql = """
                             CREATE TABLE data (
                                 t NUMERIC,
@@ -91,25 +88,23 @@ class DatabaseHandler(object):
                             )
                     """
                 cur.execute(sql)
+            finally:
+                lock.release()
 
-        self.last_flush = time.time()
-
-    def _mark_last_flush(self, future):
-        if future.done():
-            self.tpe_task = None
         self.last_flush = time.time()
 
     def insert(self, topic, value):
-        with lock:
+        lock.acquire()
+        try:
             cur = self.conn.cursor()
             cur.execute('INSERT INTO data (t, topic, value) VALUES (?, ?, ?)',  (time.time(), topic, value))
             self.conn.commit()
+        finally:
+            lock.release()
 
         # flush to disk in a separate thread executor
         if time.time() - self.last_flush > self.FLUSH_INTERVAL:
-            if self.tpe_task is None:
-                self.tpe_task = self.tpe.submit(self.flush_to_disk)
-                self.tpe_task.add_done_callback(self._mark_last_flush)
+            self.flush_to_disk()
 
         # write to s3 if enough time has passed
         self.write_to_s3()
@@ -119,35 +114,47 @@ class DatabaseHandler(object):
         if os.path.exists('{}.tmp'.format(self.filename)):
             os.remove('{}.tmp'.format(self.filename))
 
-        logger.info('attempting to store database to disk ({})'.format(self.filename))
+        logging.info('attempting to store database to disk ({})'.format(self.filename))
         if self.filename:
-            with lock:
+            lock.acquire()
+            try:
                 dest = sqlite3.connect('{}.tmp'.format(self.filename))
                 with dest:
                     self.conn.backup(dest)
                 dest.close()
+            except Exception as e:
+                logging.error('error storing database to disk: {}'.format(e))
+            finally:
+                lock.release()
             shutil.move('{}.tmp'.format(self.filename), self.filename)
+            self.last_flush = time.time()
 
-        with lock:
-            logger.info('trimming database')
+        logging.info('trimming database')
+        lock.acquire()
+        try:
             cur = self.conn.cursor()
             cur.execute("DELETE FROM data WHERE t < ?", (time.time() - self.RETENTION_PERIOD,))
             self.conn.commit()
+        finally:
+            lock.release()
 
 
     def write_to_s3(self):
         current_interval = math.floor(time.time() / self.S3_INTERVAL)
         if self.last_s3_upload is None:
             self.last_s3_upload = current_interval
+
         if current_interval > self.last_s3_upload:
-            with s3_lock:
+            s3_lock.acquire()
+            try:
                 logging.info('writing to S3')
 
-                period_start = current_interval * self.S3_INTERVAL
-                period_end = period_start + self.S3_INTERVAL
+                period_end = current_interval * self.S3_INTERVAL
+                period_start = period_end - self.S3_INTERVAL
 
                 cur = self.conn.cursor()
-                cur.execute("SELECT DISTINCT topic FROM data WHERE t >= ? AND t < ? ORDER BY topic ASC", (period_start, period_end))
+                sql = "SELECT DISTINCT topic FROM data WHERE t >= ? AND t < ? ORDER BY topic ASC"
+                cur.execute(sql, (period_start, period_end))
                 topics = [x[0] for x in cur.fetchall()]
 
                 csv_output = io.StringIO()
@@ -175,7 +182,6 @@ class DatabaseHandler(object):
                 subperiod_start = period_start
                 while subperiod_start < period_end:
                     subperiod_end = subperiod_start + self.AGGREGATION_INTERVAL
-
                     this_row = {}
                     cur.execute(median_sql, (subperiod_start, subperiod_end))
                     for row in cur.fetchall():
@@ -215,6 +221,12 @@ class DatabaseHandler(object):
                 json_output.close()
 
                 self.last_s3_upload = current_interval
+
+            except Exception as e:
+                raise e
+
+            finally:
+                s3_lock.release()
 
     def close(self):
         self.flush_to_disk()
