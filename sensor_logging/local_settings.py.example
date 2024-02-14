@@ -7,9 +7,12 @@ AGGREGATION_INTERVAL = 5 * 60 # store data in 5 minute chunks
 
 # how much data to keep in the database
 RETENTION_PERIOD = 7 * 24 * 60 * 60 # 7 days
+FLUSH_INTERVAL = 60 * 60 # trim database every hour
 
 # may no longer be used
 LOG_PATH = '/home/pi/sensor_logging'
+
+SQLITE_FILENAME = '/home/pi/sensor_logging/sensor.db'
 
 S3_BUCKET='sbma44'
 S3_PATH='my/path/to/logs/'
