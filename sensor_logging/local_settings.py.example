@@ -1,9 +1,18 @@
-MQTT_HOST = '192.168.1.200'
-SEGMENT_LENGTH = 300
-RETENTION_COUNT = 7
+MQTT_HOST = '192.168.1.2'
+HTTP_PORT = 8003
+
+# how frequently to stick a daily CSV on S3
+S3_INTERVAL = 24 * 60 * 60 # 24 hours
+AGGREGATION_INTERVAL = 5 * 60 # store data in 5 minute chunks
+
+# how much data to keep in the database
+RETENTION_PERIOD = 7 * 24 * 60 * 60 # 7 days
+
+# may no longer be used
 LOG_PATH = '/home/pi/sensor_logging'
-S3_BUCKET='username'
-S3_PATH='sensors/environment/'
-AWS_ACCESS_KEY_ID='ABCDEFGHIJKLMNOPQRSTUVWXY/
-AWS_SECRET_ACCESS_KEY='1234567890-='
+
+S3_BUCKET='sbma44'
+S3_PATH='my/path/to/logs/'
+AWS_ACCESS_KEY_ID='ABCDEFGHIJKLMNOPQRSTUVWXY'
+AWS_SECRET_ACCESS_KEY='my/secret-goes*here'
 AWS_DEFAULT_REGION='us-east-1'
