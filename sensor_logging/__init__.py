@@ -335,6 +335,14 @@ class HttpServer(object):
             self.db_tx = db_tx
             super().__init__(request, client_address, server)
 
+        def empty_queue(self, q):
+            while not q.empty():
+                try:
+                    message = q.get_nowait()
+                    queue.task_done()
+                except queue.Empty:
+                    break
+
         def do_GET(self):
             # Use the existing database connection
             parsed_path = urlparse(self.path)
@@ -342,24 +350,31 @@ class HttpServer(object):
             qsparams = parse_qs(parsed_path.query)
 
             if path == '/time-series':
+                self.empty_queue(self.db_rx)
+
                 task_id = str(uuid.uuid4())
                 self.db_rx.put(((task_id, 'query'), qsparams))
 
                 try:
                     response = self.db_tx.get(timeout=10)
                     if response[0] != task_id:
-                        raise Exception("Task ID mismatch")
+                        logging.warn('task ID mismatch')
+                        self.empty_queue(self.db_tx)
+                        self.send_response(500)
                     data = response[1]
                 except queue.Empty:
                     return self.send_timeout()
 
             elif path == '/ping':
+                self.empty_queue(self.db_rx)
+
                 task_id = str(uuid.uuid4())
                 self.db_rx.put(((task_id, 'ping'), {}))
                 try:
                     response = self.db_tx.get(timeout=10)
                     if response[0] != task_id:
-                        raise Exception("Task ID mismatch")
+                        logging.warn('task ID mismatch')
+                        self.cleanup_queue(self.db_tx)
 
                     self.send_response(200)
                     self.send_header("Content-type", "text/html")
