@@ -326,7 +326,6 @@ class HttpServer(object):
 
     # Define a factory function to create instances of MyHttpRequestHandler
     def handler_factory(self, *args, **kwargs):
-        logging.debug("Creating handler")
         return HttpServer.MyHttpRequestHandler(self.db_rx, self.db_tx, *args, **kwargs)
 
     class MyHttpRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -339,7 +338,7 @@ class HttpServer(object):
             while not q.empty():
                 try:
                     message = q.get_nowait()
-                    queue.task_done()
+                    q.task_done()
                 except queue.Empty:
                     break
 
