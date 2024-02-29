@@ -360,6 +360,10 @@ class HttpServer(object):
                         logging.warn('task ID mismatch')
                         self.empty_queue(self.db_tx)
                         self.send_response(500)
+                        self.send_header("Content-type", "text/html")
+                        self.end_headers()
+                        self.wfile.write(b"task ID mismatch")
+                        return
                     data = response[1]
                 except queue.Empty:
                     return self.send_timeout()
