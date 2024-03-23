@@ -1,15 +1,22 @@
 MQTT_HOST = '192.168.1.2'
 HTTP_PORT = 8003
 
+REDIS_HOST = '127.0.0.1'
+REDIS_PORT = 6379
+
 # how frequently to stick a daily CSV on S3
 S3_INTERVAL = 24 * 60 * 60 # 24 hours
 AGGREGATION_INTERVAL = 5 * 60 # store data in 5 minute chunks
 
 # how much data to keep in the database
 RETENTION_PERIOD = 7 * 24 * 60 * 60 # 7 days
+TRIM_INTERVAL = 60 * 60 # trim database every hour
+FLUSH_INTERVAL = 60 * 60 # trim database every hour
 
 # may no longer be used
 LOG_PATH = '/home/pi/sensor_logging'
+
+SQLITE_FILENAME = '/home/pi/sensor_logging/sensor.db'
 
 S3_BUCKET='sbma44'
 S3_PATH='my/path/to/logs/'
