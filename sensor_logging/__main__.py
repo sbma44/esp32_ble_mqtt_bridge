@@ -18,8 +18,8 @@ if not isinstance(numeric_level, int):
 # Example format: "2021-01-01 12:00:00,000 - name - LEVEL - Message"
 logging.basicConfig(level=numeric_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
-def start_httpd(port, db_rx, db_tx):
-    httpd = HttpServer(port, db_rx, db_tx)
+def start_httpd(port, db_rx, db_tx, flutter_config_filename):
+    httpd = HttpServer(port, db_rx, db_tx, flutter_config_filename)
     httpd.start()
 
 def start_db(db_rx, db_tx, s3_client, config, filename):
@@ -43,7 +43,8 @@ if __name__ == '__main__':
         'S3_INTERVAL': S3_INTERVAL,
         'RETENTION_PERIOD': RETENTION_PERIOD,
         'S3_BUCKET': S3_BUCKET,
-        'S3_PATH': S3_PATH
+        'S3_PATH': S3_PATH,
+        'FLUTTER_CONFIG_FILENAME': FLUTTER_CONFIG_FILENAME
     }
 
     logging.info('starting database')
@@ -51,7 +52,7 @@ if __name__ == '__main__':
     db_thread.start()
 
     logging.info('starting http')
-    http_thread = threading.Thread(target=start_httpd, args=(HTTP_PORT, db_rx, db_tx), daemon=True)
+    http_thread = threading.Thread(target=start_httpd, args=(HTTP_PORT, db_rx, db_tx, FLUTTER_CONFIG_FILENAME), daemon=True)
     http_thread.start()
 
     logging.info('starting mqtt')

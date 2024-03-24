@@ -314,10 +314,11 @@ class DatabaseHandler(object):
         self.close()
 
 class HttpServer(object):
-    def __init__(self, port, db_rx, db_tx):
+    def __init__(self, port, db_rx, db_tx, flutter_config_filename):
         self.port = port
         self.db_rx = db_rx
         self.db_tx = db_tx
+        self.flutter_config_filename = flutter_config_filename
 
     def start(self):
         with socketserver.TCPServer(("", self.port), self.handler_factory) as httpd:
@@ -326,12 +327,13 @@ class HttpServer(object):
 
     # Define a factory function to create instances of MyHttpRequestHandler
     def handler_factory(self, *args, **kwargs):
-        return HttpServer.MyHttpRequestHandler(self.db_rx, self.db_tx, *args, **kwargs)
+        return HttpServer.MyHttpRequestHandler(self.db_rx, self.db_tx, self.flutter_config_filename, *args, **kwargs)
 
     class MyHttpRequestHandler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, db_rx, db_tx, request, client_address, server):
+        def __init__(self, db_rx, db_tx, flutter_config_filename, request, client_address, server):
             self.db_rx = db_rx
             self.db_tx = db_tx
+            self.flutter_config_filename = flutter_config_filename
             super().__init__(request, client_address, server)
 
         def empty_queue(self, q):
@@ -350,7 +352,7 @@ class HttpServer(object):
 
             if path == '/flutter/config.json':
                 try:
-                    with open(FLUTTER_CONFIG_FILENAME) as f:
+                    with open(self.flutter_config_filename) as f:
                         self.send_response(200)
                         self.send_header("Content-type", "application/json")
                         self.end_headers()
