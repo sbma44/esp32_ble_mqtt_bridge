@@ -348,7 +348,19 @@ class HttpServer(object):
             path = parsed_path.path
             qsparams = parse_qs(parsed_path.query)
 
-            if path == '/time-series':
+            if path == '/flutter/config.json':
+                try:
+                    with open(FLUTTER_CONFIG_FILENAME) as f:
+                        self.send_response(200)
+                        self.send_header("Content-type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(f.read().encode('utf-8'))
+                except:
+                    self.send_response(500)
+                    self.end_headers()
+                return
+
+            elif path == '/time-series':
                 self.empty_queue(self.db_rx)
 
                 task_id = str(uuid.uuid4())

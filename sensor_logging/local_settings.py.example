@@ -23,3 +23,5 @@ S3_PATH='my/path/to/logs/'
 AWS_ACCESS_KEY_ID='ABCDEFGHIJKLMNOPQRSTUVWXY'
 AWS_SECRET_ACCESS_KEY='my/secret-goes*here'
 AWS_DEFAULT_REGION='us-east-1'
+
+FLUTTER_CONFIG_FILENAME = '/home/pi/sensor_logging/flutter_config.json'
